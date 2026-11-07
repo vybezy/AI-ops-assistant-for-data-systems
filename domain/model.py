@@ -59,9 +59,11 @@ class Product(BaseEntity):
     def in_stock(self) -> bool:
         return self.stock > 0
 
+    # checks if order can be fulfilled
     def can_fulfil(self, quantity: int) -> bool:
         return self.active and 0 < quantity <= self.stock
 
+    # updates reserve after an order is made
     def reserve(self, quantity: int) -> None:
         if not self.active:
             raise errors.InactiveProductError(self.id)
