@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from domain.errors import InactiveProductError, OutOfStockError
+from domain import errors
 
 
 def utc_now() -> datetime:
@@ -35,7 +35,7 @@ class Customer(BaseEntity):
 
     def change_email(self, new_email: str) -> None:
         self.email = new_email
-        self.touch()
+        self._touch()
 
     def deactivate(self) -> None:
         self.active = False
@@ -64,9 +64,9 @@ class Product(BaseEntity):
 
     def reserve(self, quantity: int) -> None:
         if not self.active:
-            raise InactiveProductError(self.id)
+            raise errors.InactiveProductError(self.id)
         if not self.can_fulfil(quantity):
-            raise OutOfStockError(self.id, requested=quantity, available=self.stock)
+            raise errors.OutOfStockError(self.id, requested=quantity, available=self.stock)
         self.stock -= quantity
         self._touch()
 
@@ -85,3 +85,48 @@ class Product(BaseEntity):
     def discontinue(self) -> None:
         self.active = False
         self._touch()
+
+
+class OrderItem(BaseModel):
+    product_id: int
+    sku: str
+    unit_price: Decimal = Field(gt=0, decimal_places=2)
+    currency: Currency
+    quantity: int = Field(gt=0)
+
+    model_config = ConfigDict(validate_assignment=True)
+
+    # constructor - takes the existing product and makes it an order item
+    @classmethod
+    def from_product(cls, product: Product, quantity: int) -> "OrderItem":
+        product.reserve(quantity)
+        return cls(
+            product_id=product.id,
+            sku=product.sku,
+            unit_price=product.price,
+            currency=product.currency,
+            quantity=quantity,
+        )
+
+    @property
+    def subtotal(self) -> Decimal:
+        return self.unit_price * self.quantity
+
+
+class Order(BaseEntity):
+    id: int
+    customer_id: int
+    currency: Currency
+    items: list[OrderItem] = Field(default_factory=list)
+
+    def add_item(self, item: OrderItem) -> None:
+        if item.currency != self.currency:
+            raise errors.CurrencyMismatchError(self.id, expected=self.currency, got=item.currency)
+        self.items.append(item)
+        self._touch()
+
+    def get_total(self) -> Decimal:
+        return sum((item.subtotal for item in self.items), Decimal("0"))
+
+    def is_empty(self) -> bool:
+        return not self.items
