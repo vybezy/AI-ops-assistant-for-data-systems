@@ -35,14 +35,11 @@ class Customer(BaseEntity):
 
     def change_email(self, new_email: str) -> None:
         self.email = new_email
-        self._touch()
+        self.touch()
 
     def deactivate(self) -> None:
         self.active = False
         self._touch()
-
-    def _touch(self) -> None:
-        self.updated_at = datetime.now(timezone.utc)
 
 
 Currency = Literal["EUR", "USD", "GBP"]
@@ -88,6 +85,3 @@ class Product(BaseEntity):
     def discontinue(self) -> None:
         self.active = False
         self._touch()
-
-    def _touch(self) -> None:
-        self.updated_at = datetime.now(timezone.utc)
